@@ -10,8 +10,8 @@
 <style>
 :root{--bg:#0b0f19;--bg2:#111827;--bg3:#1a2234;--c1:#c9a96e;--c2:#3b82f6;--c3:#e63946;--c4:#2dd4bf;--c5:#f59e0b;--c6:#a78bfa;--t1:#f0ece2;--t2:#9ca3af;--t3:#6b7280;--bd:rgba(201,169,110,.1);--ff-d:'Playfair Display','Noto Serif SC',Georgia,'SimSun',serif;--ff-b:'Noto Serif SC',Georgia,'SimSun',serif;--ff-m:'DM Mono','SF Mono','Fira Code','Courier New',monospace;--ff-u:-apple-system,BlinkMacSystemFont,'SF Pro Display','PingFang SC',sans-serif}
 *{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth;font-size:16px}
-body{font-family:var(--ff-b);background:var(--bg);color:var(--t1);line-height:1.8;overflow-x:hidden}
+html{scroll-behavior:smooth;font-size:16px;touch-action:manipulation}
+body{font-family:var(--ff-b);background:var(--bg);color:var(--t1);line-height:1.8;overflow-x:hidden;-webkit-overflow-scrolling:touch}
 ::selection{background:rgba(201,169,110,.3);color:#fff}
 
 /* ===== Background Layers ===== */
@@ -131,7 +131,7 @@ body{font-family:var(--ff-b);background:var(--bg);color:var(--t1);line-height:1.
 /* ===== Chart Box ===== */
 .chart-box{width:100%;margin:32px 0;background:var(--bg3);border:1px solid var(--bd);
   border-radius:16px;padding:24px;position:relative}
-.chart-box canvas{width:100%;display:block}
+.chart-box canvas{display:block;max-width:100%}
 .chart-title{font-family:var(--ff-u);font-size:14px;font-weight:600;color:var(--t1);margin-bottom:16px}
 
 /* ===== Timeline ===== */
@@ -283,13 +283,13 @@ body{font-family:var(--ff-b);background:var(--bg);color:var(--t1);line-height:1.
 <nav class="nav" id="navBar">
 <div class="logo">DATA &middot; DEEP DIVE</div>
 <div class="links" id="navLinks">
-<a href="#ch1">市场规模</a>
-<a href="#ch2">NVIDIA</a>
-<a href="#ch3">竞争格局</a>
-<a href="#ch4">中国产业</a>
-<a href="#ch5">产业链</a>
-<a href="#ch6">投资热潮</a>
-<a href="#ch7">趋势</a>
+<a data-target="ch1">市场规模</a>
+<a data-target="ch2">NVIDIA</a>
+<a data-target="ch3">竞争格局</a>
+<a data-target="ch4">中国产业</a>
+<a data-target="ch5">产业链</a>
+<a data-target="ch6">投资热潮</a>
+<a data-target="ch7">趋势</a>
 </div>
 <button class="nav-toggle" id="navToggle" aria-label="Menu">&#9776;</button>
 </nav>
@@ -625,30 +625,66 @@ body{font-family:var(--ff-b);background:var(--bg);color:var(--t1);line-height:1.
 </section>
 
 <script>
-// ===== Progress bar =====
+// ===== Throttled scroll handler =====
+var scrollTick=false;
 window.addEventListener('scroll',function(){
-  var s=document.documentElement.scrollTop;
-  var h=document.documentElement.scrollHeight-window.innerHeight;
-  document.getElementById('prog').style.width=(s/h*100)+'%';
-  // Nav scroll state
-  var nav=document.getElementById('navBar');
-  if(s>50)nav.classList.add('scrolled');else nav.classList.remove('scrolled');
-});
+  if(!scrollTick){
+    scrollTick=true;
+    requestAnimationFrame(function(){
+      var s=document.documentElement.scrollTop||window.pageYOffset;
+      var h=document.documentElement.scrollHeight-window.innerHeight;
+      if(h>0)document.getElementById('prog').style.width=(s/h*100)+'%';
+      var nav=document.getElementById('navBar');
+      if(s>50)nav.classList.add('scrolled');else nav.classList.remove('scrolled');
+      // Active section tracking
+      var current='';
+      sections.forEach(function(sec){
+        var top=sec.offsetTop-200;
+        if(s>=top)current=sec.getAttribute('id');
+      });
+      navLinks.forEach(function(a){
+        a.classList.remove('active');
+        if(a.dataset.target===current)a.classList.add('active');
+      });
+      bottomNavLinks.forEach(function(a){
+        a.classList.remove('active');
+        if(a.dataset.target===current)a.classList.add('active');
+      });
+      scrollTick=false;
+    });
+  }
+},{passive:true});
 
 // ===== Mobile nav toggle =====
 document.getElementById('navToggle').addEventListener('click',function(){
   document.getElementById('navLinks').classList.toggle('open');
 });
-// Close mobile nav on link click
+
+// ===== Smooth scroll to section (safe for mobile) =====
+function scrollToTarget(targetId){
+  var target=document.getElementById(targetId);
+  if(!target)return;
+  var y=target.getBoundingClientRect().top+(window.pageYOffset||document.documentElement.scrollTop);
+  // Offset for fixed nav
+  y-=60;
+  try{window.scrollTo({top:y,behavior:'smooth'});}
+  catch(e){window.scrollTo(0,y);}
+}
+// Top nav links
 document.querySelectorAll('#navLinks a').forEach(function(a){
-  a.addEventListener('click',function(){document.getElementById('navLinks').classList.remove('open')});
+  a.addEventListener('click',function(e){
+    e.preventDefault();
+    document.getElementById('navLinks').classList.remove('open');
+    var tid=a.dataset.target;
+    if(tid)scrollToTarget(tid);
+  });
 });
-// ===== Bottom nav - JS scrollIntoView (fixes white screen crash) =====
+// Bottom nav links
 document.querySelectorAll('#bottomNav a').forEach(function(a){
   a.addEventListener('click',function(e){
     e.preventDefault();
-    var target=document.getElementById(a.dataset.target);
-    if(target){target.scrollIntoView({behavior:'smooth',block:'start'})}
+    var tid=a.dataset.target;
+    if(tid)scrollToTarget(tid);
   });
 });
 
@@ -678,40 +714,30 @@ function anim(el){
   requestAnimationFrame(u);
 }
 
-// ===== Active section tracking for nav =====
+// ===== Active section tracking =====
 var sections=document.querySelectorAll('section[id]');
 var navLinks=document.querySelectorAll('#navLinks a');
 var bottomNavLinks=document.querySelectorAll('#bottomNav a');
-window.addEventListener('scroll',function(){
-  var current='';
-  sections.forEach(function(sec){
-    var top=sec.offsetTop-200;
-    if(window.pageYOffset>=top)current=sec.getAttribute('id');
-  });
-  navLinks.forEach(function(a){
-    a.classList.remove('active');
-    if(a.getAttribute('href')==='#'+current)a.classList.add('active');
-  });
-  bottomNavLinks.forEach(function(a){
-    a.classList.remove('active');
-    if(a.getAttribute('href')==='#'+current)a.classList.add('active');
-  });
-});
 
 // ===== Canvas Chart Helper =====
 function getCtx(id){
   var c=document.getElementById(id);
   if(!c)return null;
   var dpr=window.devicePixelRatio||1;
-  var w=c.parentElement.clientWidth-48;
+  var parentW=c.parentElement.clientWidth;
+  // Safety: if parent width not yet available, defer
+  if(parentW<=0)return null;
+  var w=parentW-48;
   var h=parseInt(c.getAttribute('height'))||360;
-  if(w<280)w=280;
+  // Mobile: cap chart height for better fit
+  if(window.innerWidth<=768&&h>280)h=260;
+  if(w<200)w=200;
   c.style.width=w+'px';
   c.style.height=h+'px';
-  c.width=w*dpr;
-  c.height=h*dpr;
+  c.width=Math.round(w*dpr);
+  c.height=Math.round(h*dpr);
   var ctx=c.getContext('2d');
-  ctx.scale(dpr,dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.w=w;ctx.h=h;
   return ctx;
 }
@@ -719,15 +745,17 @@ function getCtx(id){
 function drawBarLine(id,labels,barData,lineData,barColor,lineColor,barLabel,lineLabel){
   var ctx=getCtx(id);if(!ctx)return;
   var w=ctx.w,h=ctx.h;
-  var pad={t:30,r:40,b:50,l:60};
+  var isMobile=w<500;
+  var pad={t:30,r:isMobile?20:40,b:50,l:isMobile?45:60};
   var cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
   var maxVal=Math.max.apply(null,barData.concat(lineData||[]))*1.15;
   var n=labels.length;var barW=Math.min(cw/n*0.5,60);var gap=cw/n;
+  var fs=isMobile?9:11;var fsB=isMobile?11:13;var fsL=isMobile?10:12;
   ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
   for(var i=0;i<=5;i++){
     var y=pad.t+ch-ch*(i/5);
     ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();
-    ctx.fillStyle='#8b95a8';ctx.font='11px sans-serif';ctx.textAlign='right';
+    ctx.fillStyle='#8b95a8';ctx.font=fs+'px sans-serif';ctx.textAlign='right';
     ctx.fillText(Math.round(maxVal*i/5),pad.l-8,y+4);
   }
   for(var i=0;i<n;i++){
@@ -739,9 +767,9 @@ function drawBarLine(id,labels,barData,lineData,barColor,lineColor,barLabel,line
     ctx.moveTo(x,pad.t+ch);ctx.lineTo(x,y+6);ctx.quadraticCurveTo(x,y,x+6,y);
     ctx.lineTo(x+barW-6,y);ctx.quadraticCurveTo(x+barW,y,x+barW,y+6);
     ctx.lineTo(x+barW,pad.t+ch);ctx.fill();
-    ctx.fillStyle=barColor;ctx.font='bold 13px sans-serif';ctx.textAlign='center';
+    ctx.fillStyle=barColor;ctx.font='bold '+fsB+'px sans-serif';ctx.textAlign='center';
     ctx.fillText(barData[i],x+barW/2,y-8);
-    ctx.fillStyle='#8b95a8';ctx.font='12px sans-serif';
+    ctx.fillStyle='#8b95a8';ctx.font=fsL+'px sans-serif';
     ctx.fillText(labels[i],pad.l+gap*i+gap/2,pad.t+ch+24);
   }
   if(lineData){
@@ -776,15 +804,17 @@ function drawBarLine(id,labels,barData,lineData,barColor,lineColor,barLabel,line
 function drawLine(id,labels,data,lineColor,markMax){
   var ctx=getCtx(id);if(!ctx)return;
   var w=ctx.w,h=ctx.h;
-  var pad={t:30,r:30,b:50,l:60};
+  var isMobile=w<500;
+  var pad={t:30,r:isMobile?20:30,b:50,l:isMobile?45:60};
   var cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
   var maxVal=Math.max.apply(null,data)*1.15;
   var n=labels.length;var gap=cw/(n-1);
+  var fs=isMobile?9:11;
   ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
   for(var i=0;i<=5;i++){
     var y=pad.t+ch-ch*(i/5);
     ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();
-    ctx.fillStyle='#8b95a8';ctx.font='11px sans-serif';ctx.textAlign='right';
+    ctx.fillStyle='#8b95a8';ctx.font=fs+'px sans-serif';ctx.textAlign='right';
     ctx.fillText(Math.round(maxVal*i/5),pad.l-8,y+4);
   }
   ctx.beginPath();ctx.strokeStyle=lineColor;ctx.lineWidth=3;ctx.lineJoin='round';
@@ -805,12 +835,12 @@ function drawLine(id,labels,data,lineColor,markMax){
     if(data[i]>data[maxIdx])maxIdx=i;
     ctx.beginPath();ctx.arc(pts[i].x,pts[i].y,4,0,Math.PI*2);
     ctx.fillStyle=lineColor;ctx.fill();ctx.strokeStyle='#111827';ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='#8b95a8';ctx.font='11px sans-serif';ctx.textAlign='center';
+    ctx.fillStyle='#8b95a8';ctx.font=fs+'px sans-serif';ctx.textAlign='center';
     ctx.fillText(labels[i],pts[i].x,pad.t+ch+24);
   }
   if(markMax){
     var mx=pts[maxIdx].x,my=pts[maxIdx].y;
-    ctx.fillStyle=lineColor;ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+    ctx.fillStyle=lineColor;ctx.font='bold '+(isMobile?10:12)+'px sans-serif';ctx.textAlign='center';
     ctx.fillText(data[maxIdx]+'亿',mx,my-14);
   }
 }
@@ -818,15 +848,17 @@ function drawLine(id,labels,data,lineColor,markMax){
 function drawStackedBar(id,labels,series,colors,seriesNames){
   var ctx=getCtx(id);if(!ctx)return;
   var w=ctx.w,h=ctx.h;
-  var pad={t:30,r:40,b:50,l:60};
+  var isMobile=w<500;
+  var pad={t:30,r:isMobile?20:40,b:50,l:isMobile?45:60};
   var cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
   var maxVal=100;var n=labels.length;
   var barW=Math.min(cw/n*0.5,60);var gap=cw/n;
+  var fs=isMobile?9:11;var fsL=isMobile?10:12;
   ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
   for(var i=0;i<=5;i++){
     var y=pad.t+ch-ch*(i/5)*maxVal/100;
     ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();
-    ctx.fillStyle='#8b95a8';ctx.font='11px sans-serif';ctx.textAlign='right';
+    ctx.fillStyle='#8b95a8';ctx.font=fs+'px sans-serif';ctx.textAlign='right';
     ctx.fillText((i*20)+'%',pad.l-8,y+4);
   }
   for(var i=0;i<n;i++){
@@ -844,18 +876,18 @@ function drawStackedBar(id,labels,series,colors,seriesNames){
       ctx.fill();
       if(series[s][i]>=10){
         ctx.fillStyle=s===0?'#0b0f19':'#fff';
-        ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+        ctx.font='bold '+fsL+'px sans-serif';ctx.textAlign='center';
         ctx.fillText(series[s][i]+'%',x+barW/2,y+bh/2+4);
       }
       yBase=y;
     }
-    ctx.fillStyle='#8b95a8';ctx.font='12px sans-serif';ctx.textAlign='center';
+    ctx.fillStyle='#8b95a8';ctx.font=fsL+'px sans-serif';ctx.textAlign='center';
     ctx.fillText(labels[i],pad.l+gap*i+gap/2,pad.t+ch+24);
   }
   var lx=pad.l;
   for(var s=0;s<series.length;s++){
     ctx.fillStyle=colors[s];ctx.fillRect(lx,8,14,14);
-    ctx.fillStyle='#8b95a8';ctx.font='11px sans-serif';ctx.textAlign='left';
+    ctx.fillStyle='#8b95a8';ctx.font=fs+'px sans-serif';ctx.textAlign='left';
     ctx.fillText(seriesNames[s],lx+20,20);
     lx+=ctx.measureText(seriesNames[s]).width+40;
   }
@@ -864,19 +896,21 @@ function drawStackedBar(id,labels,series,colors,seriesNames){
 function drawHBar(id,labels,data,colors){
   var ctx=getCtx(id);if(!ctx)return;
   var w=ctx.w,h=ctx.h;
-  var pad={t:10,r:60,b:10,l:130};
+  var isMobile=w<500;
+  var pad={t:10,r:isMobile?50:60,b:10,l:isMobile?80:130};
   var cw=w-pad.l-pad.r,ch=h-pad.t-pad.b;
   var maxVal=Math.max.apply(null,data)*1.15;
   var n=labels.length;var barH=Math.min(ch/n*0.6,32);var gap=ch/n;
+  var fs=isMobile?9:12;var fsV=isMobile?9:11;
   for(var i=0;i<n;i++){
     var y=pad.t+gap*i+gap/2-barH/2;var bw=cw*(data[i]/maxVal);
     ctx.fillStyle=colors[i%colors.length];ctx.beginPath();
     ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+bw-4,y);ctx.quadraticCurveTo(pad.l+bw,y,pad.l+bw,y+4);
     ctx.lineTo(pad.l+bw,y+barH-4);ctx.quadraticCurveTo(pad.l+bw,y+barH,pad.l+bw-4,y+barH);
     ctx.lineTo(pad.l,y+barH);ctx.fill();
-    ctx.fillStyle='#8b95a8';ctx.font='12px sans-serif';ctx.textAlign='right';
+    ctx.fillStyle='#8b95a8';ctx.font=fs+'px sans-serif';ctx.textAlign='right';
     ctx.fillText(labels[i],pad.l-8,y+barH/2+4);
-    ctx.fillStyle='#8b95a8';ctx.font='11px sans-serif';ctx.textAlign='left';
+    ctx.fillStyle='#8b95a8';ctx.font=fsV+'px sans-serif';ctx.textAlign='left';
     ctx.fillText(data[i]+'亿',pad.l+bw+8,y+barH/2+4);
   }
 }
@@ -884,6 +918,9 @@ function drawHBar(id,labels,data,colors){
 function drawDonut(svgId,legendId,data,colors){
   var svg=document.getElementById(svgId);var legend=document.getElementById(legendId);
   if(!svg||!legend)return;
+  // Clear previous content (for resize redraws)
+  while(svg.firstChild)svg.removeChild(svg.firstChild);
+  while(legend.firstChild)legend.removeChild(legend.firstChild);
   var cx=140,cy=140,r=100,ir=55;var total=0;
   for(var i=0;i<data.length;i++)total+=data[i].value;
   var angle=-90;var ns='http://www.w3.org/2000/svg';
@@ -936,23 +973,44 @@ function initCharts(){
   // Add 3000B milestone line on chart6
   var c6=document.getElementById('chart6');
   if(c6){
-    var dpr=window.devicePixelRatio||1;
     var cw=parseInt(c6.style.width);var ch=parseInt(c6.style.height);
-    var ctx2=c6.getContext('2d');ctx2.setTransform(dpr,0,0,dpr,0,0);
-    var pad={t:30,r:30,b:50,l:60};var plotH=ch-pad.t-pad.b;
-    var maxV=3837*1.15;var milestoneY=pad.t+plotH-plotH*(3000/maxV);
-    ctx2.setLineDash([6,4]);ctx2.strokeStyle='#f59e0b';ctx2.lineWidth=1.5;
-    ctx2.beginPath();ctx2.moveTo(pad.l,milestoneY);ctx2.lineTo(cw-pad.r,milestoneY);ctx2.stroke();
-    ctx2.setLineDash([]);ctx2.fillStyle='#f59e0b';ctx2.font='11px sans-serif';ctx2.textAlign='right';
-    ctx2.fillText('3000亿美元里程碑',cw-pad.r,milestoneY-6);
+    if(cw>0&&ch>0){
+      var dpr=window.devicePixelRatio||1;
+      var ctx2=c6.getContext('2d');ctx2.setTransform(dpr,0,0,dpr,0,0);
+      var pad={t:30,r:30,b:50,l:60};var plotH=ch-pad.t-pad.b;
+      var maxV=3837*1.15;var milestoneY=pad.t+plotH-plotH*(3000/maxV);
+      ctx2.setLineDash([6,4]);ctx2.strokeStyle='#f59e0b';ctx2.lineWidth=1.5;
+      ctx2.beginPath();ctx2.moveTo(pad.l,milestoneY);ctx2.lineTo(cw-pad.r,milestoneY);ctx2.stroke();
+      ctx2.setLineDash([]);ctx2.fillStyle='#f59e0b';ctx2.font='11px sans-serif';ctx2.textAlign='right';
+      ctx2.fillText('3000亿美元里程碑',cw-pad.r,milestoneY-6);
+    }
   }
 }
 
-if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',initCharts);}
-else{initCharts();}
+// Delayed chart init: wait for layout to complete, with retry
+var chartInitRetries=0;
+function tryInitCharts(){
+  // Check if all chart containers have non-zero width
+  var ready=true;
+  var boxes=document.querySelectorAll('.chart-box');
+  for(var i=0;i<boxes.length;i++){
+    if(boxes[i].clientWidth<=0){ready=false;break;}
+  }
+  if(ready){
+    initCharts();
+  }else if(chartInitRetries<10){
+    chartInitRetries++;
+    requestAnimationFrame(tryInitCharts);
+  }
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',function(){requestAnimationFrame(tryInitCharts);});
+}else{
+  requestAnimationFrame(tryInitCharts);
+}
 
 var resizeTimer;
-window.addEventListener('resize',function(){clearTimeout(resizeTimer);resizeTimer=setTimeout(initCharts,200);});
+window.addEventListener('resize',function(){clearTimeout(resizeTimer);resizeTimer=setTimeout(function(){chartInitRetries=0;tryInitCharts();},250);},{passive:true});
 </script>
 </body>
 </html>
